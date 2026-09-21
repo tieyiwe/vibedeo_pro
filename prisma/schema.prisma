@@ -1,0 +1,186 @@
+// Vibedeo — Prisma schema
+//
+// Target: Replit's built-in Postgres (DATABASE_URL is set automatically when the
+// database is provisioned from the Replit Database pane).
+//
+// Portability note: everything here is plain Postgres with no provider-specific
+// extensions, so migrating to Supabase / Neon / RDS later is a DATABASE_URL swap.
+// All database access goes through Prisma (lib/prisma.ts) — never raw SQL.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Plan {
+  free
+  creator
+  pro
+}
+
+enum GenerationType {
+  text_to_video
+  image_to_video
+}
+
+enum GenerationStatus {
+  queued
+  processing
+  completed
+  failed
+}
+
+enum CreditTransactionType {
+  purchase
+  deduction
+  refund
+  bonus
+}
+
+enum CharacterStyle {
+  realistic
+  pixar_3d
+  anime
+  claymation
+}
+
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  emailVerified DateTime?
+  passwordHash  String? // null when the user signed up through Google
+  name          String?
+  image         String?
+  credits       Int       @default(20) // free-tier starting credits
+  plan          Plan      @default(free)
+  stripeCustomerId String? @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts            Account[]
+  sessions            Session[]
+  generations         Generation[]
+  characters          Character[]
+  creditTransactions  CreditTransaction[]
+
+  @@map("users")
+}
+
+// ---- Auth.js (NextAuth) adapter models -------------------------------------
+
+model Account {
+  id                String  @id @default(uuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ---- Product models ---------------------------------------------------------
+
+model Generation {
+  id              String           @id @default(uuid())
+  userId          String
+  prompt          String
+  enhancedPrompt  String?
+  finalPrompt     String? // what was actually sent to Seedance (style + character + prompt)
+  type            GenerationType   @default(text_to_video)
+  style           CharacterStyle   @default(realistic)
+  aspectRatio     String           @default("16:9")
+  durationSeconds Int              @default(5)
+  resolution      String           @default("720p")
+  status          GenerationStatus @default(queued)
+  seedanceJobId   String?
+  inputImageUrl   String? // for image_to_video, stored in object storage
+  outputUrl       String? // object-storage key/URL of the finished mp4
+  thumbnailUrl    String?
+  errorMessage    String?
+  creditsUsed     Int              @default(0)
+  refunded        Boolean          @default(false)
+  characterId     String?
+  seed            Int?
+  createdAt       DateTime         @default(now())
+  completedAt     DateTime?
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character Character? @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@map("generations")
+}
+
+model CreditTransaction {
+  id              String                @id @default(uuid())
+  userId          String
+  amount          Int // positive for credit, negative for debit
+  type            CreditTransactionType
+  description     String?
+  stripePaymentId String?               @unique
+  createdAt       DateTime              @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("credit_transactions")
+}
+
+model Character {
+  id                String         @id @default(uuid())
+  userId            String
+  name              String
+  referenceImageUrl String?
+  // A detailed, stable visual description written the way a video-generation
+  // prompt expects. Generated/refined with Claude so it stays identical across
+  // every generation the character appears in.
+  lockedDescription String
+  style             CharacterStyle @default(pixar_3d)
+  // Seedance supports `--seed`; locking it improves shot-to-shot consistency.
+  seed              Int?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generations Generation[]
+
+  @@index([userId, createdAt])
+  @@map("characters")
+}

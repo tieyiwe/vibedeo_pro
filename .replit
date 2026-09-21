@@ -1,0 +1,26 @@
+# Replit configuration for Vibedeo.
+#
+# Provision from the Replit workspace panes before the first run:
+#   - Database pane  -> PostgreSQL   (sets DATABASE_URL in Secrets)
+#   - Storage pane   -> Object Storage bucket (sets the bucket id in Secrets)
+#
+# Everything else goes in the Secrets pane — see .env.example.
+
+run = "npm run build && npm run start"
+entrypoint = "app/page.tsx"
+modules = ["nodejs-22", "postgresql-16"]
+
+[nix]
+channel = "stable-24_05"
+
+[deployment]
+run = ["sh", "-c", "npm run build && npm run start"]
+build = ["sh", "-c", "npm ci && npx prisma migrate deploy && npm run build"]
+deploymentTarget = "cloudrun"
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[env]
+NEXT_TELEMETRY_DISABLED = "1"

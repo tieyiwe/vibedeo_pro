@@ -1,0 +1,21 @@
+node_modules/
+.next/
+out/
+build/
+dist/
+
+# local env + secrets (on Replit these live in the Secrets pane)
+.env
+.env*.local
+!.env.example
+
+# local object-storage fallback (used when no Replit bucket is configured)
+.data/
+
+*.log
+npm-debug.log*
+.DS_Store
+.vscode/
+.idea/
+tsconfig.tsbuildinfo
+next-env.d.ts.bak

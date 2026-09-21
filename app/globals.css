@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink-950: #08080b;
+  --color-ink-900: #0c0c11;
+  --color-ink-850: #101017;
+  --color-ink-800: #15151d;
+  --color-ink-700: #1d1d28;
+  --color-ink-600: #282836;
+  --color-ink-500: #3a3a4d;
+
+  --color-brand-300: #c4b5fd;
+  --color-brand-400: #a78bfa;
+  --color-brand-500: #8b5cf6;
+  --color-brand-600: #7c3aed;
+  --color-accent-400: #f472b6;
+  --color-accent-500: #ec4899;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background-color: var(--color-ink-950);
+  color: #e8e8ef;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Ambient glow behind the app, like a studio backdrop. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 15% -10%, rgba(124, 58, 237, 0.18), transparent 60%),
+    radial-gradient(50rem 35rem at 90% 0%, rgba(236, 72, 153, 0.12), transparent 55%);
+  z-index: 0;
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-ink-700 bg-ink-850/80 backdrop-blur;
+  }
+
+  /* Tailwind v4 cannot @apply another custom component class, so each button
+     variant repeats the shared base utilities. */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+      transition disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+      transition disabled:cursor-not-allowed disabled:opacity-50
+      bg-gradient-to-r from-brand-600 to-accent-500 text-white shadow-lg shadow-brand-600/20
+      hover:from-brand-500 hover:to-accent-400;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+      transition disabled:cursor-not-allowed disabled:opacity-50
+      border border-ink-600 bg-ink-800/70 text-zinc-200 hover:border-ink-500 hover:bg-ink-700;
+  }
+
+  .btn-subtle {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium
+      transition disabled:cursor-not-allowed disabled:opacity-50
+      text-zinc-400 hover:bg-ink-800 hover:text-zinc-100;
+  }
+
+  .field {
+    @apply w-full rounded-xl border border-ink-600 bg-ink-900/80 px-3.5 py-2.5 text-sm text-zinc-100
+      placeholder:text-zinc-500 outline-none transition focus:border-brand-500
+      focus:ring-2 focus:ring-brand-500/30;
+  }
+
+  .label {
+    @apply mb-1.5 block text-xs font-medium uppercase tracking-wide text-zinc-400;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ink-600 bg-ink-800/80 px-2.5 py-1
+      text-[11px] font-medium text-zinc-300;
+  }
+}
+
+/* Thin scrollbars so panels feel like a tool, not a document. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-600) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--color-ink-600);
+  border-radius: 9999px;
+}
