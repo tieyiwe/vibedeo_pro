@@ -3,13 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Vibedeo video creation studio API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: dashboard
+    description: Dashboard and credit summaries
+  - name: generations
+    description: AI video generations
+  - name: characters
+    description: Reusable character library
+  - name: prompts
+    description: Prompt enhancement
 paths:
   /healthz:
     get:
@@ -24,7 +32,187 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get the dashboard summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+  /credits:
+    get:
+      operationId: getCredits
+      tags: [dashboard]
+      summary: Get the current credit balance
+      responses:
+        "200":
+          description: Current credits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreditBalance"
+  /generations:
+    get:
+      operationId: listGenerations
+      tags: [generations]
+      summary: List recent generations
+      responses:
+        "200":
+          description: Recent generations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Generation"
+    post:
+      operationId: createGeneration
+      tags: [generations]
+      summary: Create a mock or provider-backed video generation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerationInput"
+      responses:
+        "201":
+          description: Generation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Generation"
+        "400":
+          description: Invalid input or insufficient credits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /generations/{id}:
+    get:
+      operationId: getGeneration
+      tags: [generations]
+      summary: Get a generation and its current status
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Generation status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Generation"
+        "404":
+          description: Generation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /generations/{id}/share:
+    post:
+      operationId: createGenerationShare
+      tags: [generations]
+      summary: Create a share link for a completed generation
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: Share link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShareLink"
+  /characters:
+    get:
+      operationId: listCharacters
+      tags: [characters]
+      summary: List saved characters
+      responses:
+        "200":
+          description: Saved characters
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Character"
+    post:
+      operationId: createCharacter
+      tags: [characters]
+      summary: Save a reusable character
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CharacterInput"
+      responses:
+        "201":
+          description: Character created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Character"
+  /characters/{id}:
+    patch:
+      operationId: updateCharacter
+      tags: [characters]
+      summary: Update a saved character
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CharacterUpdate"
+      responses:
+        "200":
+          description: Updated character
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Character"
+    delete:
+      operationId: deleteCharacter
+      tags: [characters]
+      summary: Delete a saved character
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "204":
+          description: Character deleted
+  /prompts/enhance:
+    post:
+      operationId: enhancePrompt
+      tags: [prompts]
+      summary: Enhance a rough video prompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptEnhancementInput"
+      responses:
+        "200":
+          description: Enhanced prompt preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptEnhancement"
 components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
   schemas:
     HealthStatus:
       type: object
@@ -33,4 +221,189 @@ components:
           type: string
       required:
         - status
-
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    DashboardSummary:
+      type: object
+      properties:
+        credits:
+          type: integer
+        totalGenerations:
+          type: integer
+        completedGenerations:
+          type: integer
+        processingGenerations:
+          type: integer
+        savedCharacters:
+          type: integer
+        recentGenerations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Generation"
+      required: [credits, totalGenerations, completedGenerations, processingGenerations, savedCharacters, recentGenerations]
+    CreditBalance:
+      type: object
+      properties:
+        credits:
+          type: integer
+        plan:
+          type: string
+        nextPack:
+          type: string
+      required: [credits, plan, nextPack]
+    Generation:
+      type: object
+      properties:
+        id:
+          type: string
+        prompt:
+          type: string
+        enhancedPrompt:
+          type: ["string", "null"]
+        finalPrompt:
+          type: string
+        type:
+          type: string
+          enum: [text_to_video, image_to_video]
+        style:
+          type: string
+          enum: [realistic, pixar_3d, anime, claymation]
+        aspectRatio:
+          type: string
+          enum: ["16:9", "9:16", "1:1"]
+        durationSeconds:
+          type: integer
+        resolution:
+          type: string
+          enum: [standard, high]
+        creditsUsed:
+          type: integer
+        status:
+          type: string
+          enum: [queued, processing, completed, failed]
+        progress:
+          type: integer
+        characterId:
+          type: ["string", "null"]
+        characterName:
+          type: ["string", "null"]
+        outputUrl:
+          type: ["string", "null"]
+        thumbnailUrl:
+          type: ["string", "null"]
+        errorMessage:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        completedAt:
+          type: ["string", "null"]
+      required: [id, prompt, enhancedPrompt, finalPrompt, type, style, aspectRatio, durationSeconds, resolution, creditsUsed, status, progress, characterId, characterName, outputUrl, thumbnailUrl, errorMessage, createdAt, completedAt]
+    GenerationInput:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 8
+        enhancedPrompt:
+          type: ["string", "null"]
+        type:
+          type: string
+          enum: [text_to_video, image_to_video]
+        style:
+          type: string
+          enum: [realistic, pixar_3d, anime, claymation]
+        aspectRatio:
+          type: string
+          enum: ["16:9", "9:16", "1:1"]
+        durationSeconds:
+          type: integer
+          enum: [4, 6, 8]
+        resolution:
+          type: string
+          enum: [standard, high]
+        characterId:
+          type: ["string", "null"]
+      required: [prompt, type, style, aspectRatio, durationSeconds, resolution]
+    Character:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        sourceDescription:
+          type: ["string", "null"]
+        lockedDescription:
+          type: ["string", "null"]
+        style:
+          type: string
+          enum: [realistic, pixar_3d, anime, claymation]
+        referenceImageUrl:
+          type: ["string", "null"]
+        usageCount:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, name, sourceDescription, lockedDescription, style, referenceImageUrl, usageCount, createdAt]
+    CharacterInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+        sourceDescription:
+          type: string
+          minLength: 8
+        style:
+          type: string
+          enum: [realistic, pixar_3d, anime, claymation]
+      required: [name, sourceDescription, style]
+    CharacterUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+        sourceDescription:
+          type: string
+          minLength: 8
+        style:
+          type: string
+          enum: [realistic, pixar_3d, anime, claymation]
+    PromptEnhancementInput:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 8
+        style:
+          type: string
+          enum: [realistic, pixar_3d, anime, claymation]
+        characterId:
+          type: ["string", "null"]
+      required: [prompt, style]
+    PromptEnhancement:
+      type: object
+      properties:
+        originalPrompt:
+          type: string
+        enhancedPrompt:
+          type: string
+        notes:
+          type: array
+          items:
+            type: string
+      required: [originalPrompt, enhancedPrompt, notes]
+    ShareLink:
+      type: object
+      properties:
+        url:
+          type: string
+        expiresIn:
+          type: integer
+      required: [url, expiresIn]

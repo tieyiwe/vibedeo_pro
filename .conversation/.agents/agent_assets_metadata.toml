@@ -1,0 +1,16 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "jSUi2ndpdbcWaBBwS1IqD"
+uri = "file://Vibedeo-MVP-Spec-Review.md"
+type = "text"
+title = "Vibedeo MVP Specification Review"
+description = "A tightened implementation plan covering MVP scope, schema, provider adapters, credits, jobs, auth, storage, Stripe, acceptance criteria, and build phases."
+logical_id = "cac5adf5-6571-4533-98ec-42710f220cef"
+content_hash = "sha256:5012d778b8a1eeec5dd29167a2d9638aa71fe1429e17c5ca8e4dc785b6611bf7"
+size = 12990
+mtime_ms = 1790028727401
+storage_uri = "gcs://replit-rams-assets-worf/rams/assets/conversation:d01ae28f-3b20-42e6-88cc-0227b9f43378/cac5adf5-6571-4533-98ec-42710f220cef/efc6cd81-088d-4e45-ab2f-5e5d22f1c2be"
+storage_version_token = "1790028730906753"
+content_type = "text/markdown"

@@ -1,0 +1,189 @@
+# Vibedeo — Master Build Prompt for Claude Code (Replit)
+
+Paste this entire prompt into Claude Code inside your Replit workspace to scaffold and build the initial version of Vibedeo.
+
+---
+
+## Project Overview
+
+Build **Vibedeo**, a web app that lets users generate short AI videos from text or image prompts using the **Seedance API** as the generation backend. The pitch is high-quality AI video generation at a fraction of the cost of Runway, Pika, or Sora, made possible by Seedance's lower per-second pricing.
+
+Two features are core to the product from day one, not later add-ons:
+- **Character consistency**: a user can define a character once (via reference image and/or a locked text description) and reuse it across multiple generations so the same character appears with a consistent face, body, and outfit from clip to clip.
+- **Pixar-style 3D animation output**: a first-class style option that produces stylized 3D cartoon/animated video (the "Pixar look": rounded expressive character design, soft global illumination, vibrant saturated colors, cinematic camera framing), not just photorealistic video.
+
+Target users: content creators, small businesses, indie animators/storytellers, and social media marketers who want fast, affordable AI video clips (both realistic and animated/cartoon style) for TikTok, Reels, YouTube Shorts, and ads.
+
+Build this as a single deployable Next.js app suitable for hosting on Replit.
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router), TypeScript, Tailwind CSS
+- **Database/Auth**: Supabase (Postgres + Auth)
+- **Storage**: Supabase Storage (generated videos, thumbnails, user uploads)
+- **Payments**: Stripe (credit packs, one-time and subscription)
+- **Video generation**: Seedance API
+- **Prompt enhancement**: Anthropic API (Claude) to rewrite rough prompts into stronger video-generation prompts
+- **Job queue**: A `generation_jobs` table in Postgres, polled by a worker route, since Seedance generation is asynchronous
+- **Hosting**: Replit (Node.js environment, always-on deployment)
+
+---
+
+## Environment Setup (do this first)
+
+1. Initialize a Next.js 15 project with TypeScript and Tailwind:
+   ```
+   npx create-next-app@latest vibedeo --typescript --tailwind --app
+   ```
+2. Install dependencies:
+   ```
+   npm install @supabase/supabase-js @supabase/ssr stripe @anthropic-ai/sdk zod react-hook-form
+   ```
+3. Create a `.env.local` file (and mirror these as Replit Secrets, never commit this file) with:
+   ```
+   NEXT_PUBLIC_SUPABASE_URL=
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=
+   SUPABASE_SERVICE_ROLE_KEY=
+   SEEDANCE_API_KEY=
+   SEEDANCE_API_BASE_URL=
+   ANTHROPIC_API_KEY=
+   STRIPE_SECRET_KEY=
+   STRIPE_WEBHOOK_SECRET=
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=
+   NEXT_PUBLIC_APP_URL=
+   ```
+4. Configure the Replit run command to start the Next.js production server (`npm run build && npm run start`) and set the `.replit` file to expose port 3000, with "Always On" enabled if available on the plan.
+5. If a Seedance API key and Supabase project are not yet created, stop and ask the user for them before proceeding, since the app cannot function without both.
+
+---
+
+## Database Schema (Supabase Postgres)
+
+Create these tables via Supabase migrations:
+
+**users** (extends Supabase auth.users)
+- `id` (uuid, references auth.users)
+- `email`
+- `credits` (integer, default 20 for free tier)
+- `plan` (enum: free, creator, pro)
+- `created_at`
+
+**generations**
+- `id` (uuid)
+- `user_id` (references users)
+- `prompt` (text)
+- `enhanced_prompt` (text, nullable)
+- `type` (enum: text_to_video, image_to_video)
+- `aspect_ratio` (text, e.g. "16:9", "9:16", "1:1")
+- `duration_seconds` (integer)
+- `resolution` (text)
+- `status` (enum: queued, processing, completed, failed)
+- `seedance_job_id` (text, nullable)
+- `output_url` (text, nullable)
+- `thumbnail_url` (text, nullable)
+- `credits_used` (integer)
+- `created_at`, `completed_at`
+
+**credit_transactions**
+- `id`, `user_id`, `amount`, `type` (purchase, deduction, refund), `stripe_payment_id` (nullable), `created_at`
+
+**characters**
+- `id` (uuid)
+- `user_id` (references users)
+- `name` (text, user-given label e.g. "Max the Fox")
+- `reference_image_url` (text, nullable, stored in Supabase Storage)
+- `locked_description` (text, a detailed, consistent visual description of the character: species/appearance, proportions, colors, outfit, distinguishing features, generated or refined with Claude so it stays consistent across prompts)
+- `style` (enum: realistic, pixar_3d, anime, claymation, etc., default pixar_3d works well for character-driven cartoon use cases)
+- `seed` (text/integer, nullable, if Seedance supports seed locking for consistency)
+- `created_at`
+
+Add `character_id` (uuid, nullable, references characters) to the **generations** table, so any generation can optionally be tied to a saved character.
+
+Enable Row Level Security on all tables so users can only read/write their own rows.
+
+---
+
+## Folder Structure
+
+```
+/app
+  /api
+    /generate          → POST: create a generation job
+    /generate/status   → GET: poll job status
+    /enhance-prompt     → POST: send prompt to Claude for enhancement
+    /webhooks/stripe    → POST: handle Stripe events
+    /webhooks/seedance  → POST: handle Seedance completion callbacks (if supported), else polling
+  /dashboard
+    page.tsx            → generation history grid
+  /generate
+    page.tsx            → main generation UI
+  /characters
+    page.tsx            → character library (create/edit/select saved characters)
+  /pricing
+    page.tsx            → credit packs / plans
+  /login, /signup
+/components
+  GenerationForm.tsx
+  VideoCard.tsx
+  CreditBalance.tsx
+  PromptEnhancerToggle.tsx
+  StyleSelector.tsx      → realistic / pixar_3d / anime / claymation picker
+  CharacterCard.tsx
+  CharacterCreateForm.tsx
+/lib
+  supabase.ts
+  seedance.ts           → Seedance API client wrapper
+  anthropic.ts          → prompt enhancement + character description generation
+  stripe.ts
+  credits.ts            → credit deduction/refund logic
+  characters.ts         → save/load/apply saved character to a generation prompt
+```
+
+---
+
+## Core Features to Build (MVP scope only)
+
+1. **Auth**: Email/password and Google sign-in via Supabase Auth.
+2. **Text-to-video generation**: A form with a prompt textarea, aspect ratio selector (16:9, 9:16, 1:1), duration selector, and resolution selector. On submit, deduct credits, create a `generations` row with status `queued`, and call the Seedance API.
+3. **Image-to-video generation**: Allow an image upload (stored in Supabase Storage) as an alternative starting point, passed to Seedance's image-to-video endpoint.
+4. **Style selector, including Pixar-style 3D animation**: A style picker on the generation form (realistic, **pixar_3d**, anime, claymation). Selecting a style injects a tuned style prefix/suffix into the prompt sent to Seedance so output matches that look. For `pixar_3d`, use a template along the lines of: "3D animated Pixar/DreamWorks-style render, rounded expressive character design, soft cinematic global illumination, vibrant saturated color palette, subsurface scattering on skin, smooth stylized textures, shallow depth of field, animated feature film quality" appended to the user's prompt (keep this as an editable constant in `lib/seedance.ts` or a `stylePresets.ts` file so it can be tuned after seeing real Seedance output).
+5. **Character consistency**: A "Characters" library where a user can create a saved character by uploading a reference image and/or describing it in text. On save, send the description (and image, if Seedance/Claude vision supports it) to Claude to produce a detailed, consistent `locked_description` written the way a video-generation prompt expects (physical traits, proportions, colors, outfit, distinguishing marks). When generating a video, let the user pick a saved character from a dropdown; the app then prepends the character's `locked_description` (and passes `reference_image_url` and/or `seed` to Seedance if its API supports image-conditioned or seed-based consistency) to the prompt, so the same character can recur correctly across multiple generations and multiple scenes. Store which character (if any) was used on each `generations` row.
+6. **Prompt enhancer**: A toggle that, when on, sends the user's raw prompt (plus selected style and character, if any) to Claude with an instruction to rewrite it into a more detailed, cinematic video-generation prompt before sending it to Seedance. Show the enhanced prompt to the user before they confirm generation.
+7. **Job polling**: Since Seedance generation is async, poll for job status every few seconds from the frontend, or run a background route that polls Seedance and updates the `generations` table.
+8. **Generation history / dashboard**: A grid of the user's past generations with thumbnail, status, style used, character used (if any), and a download button for completed ones.
+9. **Credit system**: New users get free credits. Each generation deducts credits based on duration and resolution (define a simple cost table, e.g. 1 credit per second at standard resolution, 2 credits per second at high resolution). Block generation if the user has insufficient credits and prompt them to buy more.
+10. **Stripe integration**: A pricing page offering at least two credit packs and a Stripe Checkout flow. Handle the `checkout.session.completed` webhook to add credits to the user's account.
+11. **Download/share**: Let users download the finished MP4 and copy a shareable link.
+
+Do not build later-phase features (video-to-video restyle, batch generation, built-in timeline editor, team workspaces, public gallery, API access) in this pass. Leave clearly marked TODO comments or a `FUTURE_FEATURES.md` file noting where they'd hook in.
+
+---
+
+## Build Order
+
+1. Scaffold the Next.js project and folder structure above.
+2. Set up Supabase project, run the schema migrations (including `characters` table and `character_id` on `generations`), enable RLS.
+3. Build auth (login/signup pages, session handling).
+4. Build the Seedance API client wrapper (`lib/seedance.ts`) with functions for `createTextToVideoJob`, `createImageToVideoJob`, and `getJobStatus`. Stub these with mock responses if the real API key isn't available yet, clearly marked with a `// TODO: replace mock with real Seedance call`. Confirm whether Seedance supports seed locking and/or reference-image conditioning, since that determines how strong character consistency can be at the API level versus relying on detailed prompt text alone.
+5. Build `stylePresets.ts` with the prompt templates for each style (realistic, pixar_3d, anime, claymation).
+6. Build the Characters feature: create/edit/list saved characters, generate `locked_description` via Claude, store reference image in Supabase Storage.
+7. Build the generation form (prompt, style selector, character selector, aspect ratio, duration, resolution) and connect it to the `/api/generate` route, composing the final prompt from: user prompt + selected style template + selected character's locked description (if any).
+8. Build job polling and update generation status in the database.
+9. Build the dashboard/history view, showing style and character used per generation.
+10. Build the credit system and cost calculation logic.
+11. Integrate Stripe for credit purchases.
+12. Do a full end-to-end test: sign up, buy credits (test mode), create a character, generate a Pixar-style video using that character, generate a second video reusing the same character, confirm visual consistency and that both appear correctly in history.
+13. Write a short `README.md` covering setup, environment variables, and how to run locally and on Replit.
+
+---
+
+## Notes for Claude Code
+
+- Prioritize a working end-to-end loop (prompt in, video out, credits deducted) over polish. Get that loop functioning before styling anything.
+- If the Seedance API's actual request/response shape isn't known yet, ask the user for their API documentation link or example request before writing the integration, rather than guessing at field names. Specifically check its docs for: (1) seed/reference-image parameters for consistency, and (2) whether style/quality parameters exist separately from the prompt text, since that changes how `stylePresets.ts` and the character system should be implemented.
+- Keep all Seedance and Stripe calls server-side only (API routes), never expose secret keys to the client.
+- Use Tailwind for styling, keep the UI clean and modern (dark mode default is a good fit for a video tool), but don't over-invest in design polish in this pass.
+- Character consistency quality will depend heavily on what Seedance actually supports. Build the prompt-engineering approach (locked description + style template) as the reliable baseline that always works, and layer in seed/reference-image conditioning as an enhancement if the API supports it, rather than assuming API-level consistency is available.
+- For Pixar-style output, treat the style template in `stylePresets.ts` as a starting point to refine after seeing real generations. Note in the README that the exact wording may need tuning once actual Seedance output is compared against the desired look.

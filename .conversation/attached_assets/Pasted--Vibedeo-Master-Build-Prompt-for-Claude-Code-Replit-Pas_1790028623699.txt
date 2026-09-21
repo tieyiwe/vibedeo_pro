@@ -1,0 +1,209 @@
+# Vibedeo — Master Build Prompt for Claude Code (Replit)
+
+Paste this entire prompt into Claude Code inside your Replit workspace to scaffold and build the initial version of Vibedeo.
+
+---
+
+## Project Overview
+
+Build **Vibedeo**, a web app that lets users generate short AI videos from text or image prompts using the **Seedance API** as the generation backend. The pitch is high-quality AI video generation at a fraction of the cost of Runway, Pika, or Sora, made possible by Seedance's lower per-second pricing.
+
+Two features are core to the product from day one, not later add-ons:
+- **Character consistency**: a user can define a character once (via reference image and/or a locked text description) and reuse it across multiple generations so the same character appears with a consistent face, body, and outfit from clip to clip.
+- **Pixar-style 3D animation output**: a first-class style option that produces stylized 3D cartoon/animated video (the "Pixar look": rounded expressive character design, soft global illumination, vibrant saturated colors, cinematic camera framing), not just photorealistic video.
+
+Target users: content creators, small businesses, indie animators/storytellers, and social media marketers who want fast, affordable AI video clips (both realistic and animated/cartoon style) for TikTok, Reels, YouTube Shorts, and ads.
+
+Build this as a single deployable Next.js app suitable for hosting on Replit.
+
+---
+
+## Tech Stack
+
+- **Framework**: Next.js 15 (App Router), TypeScript, Tailwind CSS
+- **Database**: Replit's built-in Postgres database (provisioned via Replit's Database pane), accessed with Prisma or Drizzle ORM
+- **Auth**: Custom email/password + Google OAuth using Auth.js (NextAuth), with sessions stored in the Replit Postgres database. No third-party auth service.
+- **Storage**: Replit Object Storage (S3-compatible bucket built into Replit) for generated videos, thumbnails, and user/character reference image uploads
+- **Payments**: Stripe (credit packs, one-time and subscription)
+- **Video generation**: Seedance API
+- **Prompt enhancement**: Anthropic API (Claude) to rewrite rough prompts into stronger video-generation prompts
+- **Job queue**: A `generation_jobs`-equivalent status column on the `generations` table in Postgres, polled by a worker route, since Seedance generation is asynchronous
+- **Hosting**: Replit (Node.js environment, always-on deployment) — database, storage, app, and hosting all live on one platform
+
+---
+
+## Environment Setup (do this first)
+
+1. Initialize a Next.js 15 project with TypeScript and Tailwind:
+   ```
+   npx create-next-app@latest vibedeo --typescript --tailwind --app
+   ```
+2. Provision Replit's built-in Postgres database from the Database pane in the Replit workspace. This automatically sets a `DATABASE_URL` in Replit Secrets, no external account needed.
+3. Provision a Replit Object Storage bucket from the Storage pane in the Replit workspace for video/image files.
+4. Install dependencies:
+   ```
+   npm install prisma @prisma/client next-auth @auth/prisma-adapter bcryptjs stripe @anthropic-ai/sdk zod react-hook-form @replit/object-storage
+   ```
+5. Initialize Prisma against the Replit Postgres database:
+   ```
+   npx prisma init
+   ```
+   Point `DATABASE_URL` in `.env` at the value Replit already set in Secrets (reference it, don't duplicate the raw connection string in a committed file).
+6. Set the following as Replit Secrets (never commit them to a file):
+   ```
+   DATABASE_URL              (auto-set by Replit's Postgres provisioning)
+   NEXTAUTH_SECRET
+   NEXTAUTH_URL
+   GOOGLE_CLIENT_ID
+   GOOGLE_CLIENT_SECRET
+   SEEDANCE_API_KEY
+   SEEDANCE_API_BASE_URL
+   ANTHROPIC_API_KEY
+   STRIPE_SECRET_KEY
+   STRIPE_WEBHOOK_SECRET
+   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
+   NEXT_PUBLIC_APP_URL
+   REPLIT_OBJECT_STORAGE_BUCKET_ID   (auto-set when the bucket is provisioned)
+   ```
+7. Configure the Replit run command to start the Next.js production server (`npm run build && npm run start`) and set the `.replit` file to expose port 3000, with "Always On" enabled if available on the plan.
+8. If a Seedance API key is not yet available, or Google OAuth credentials haven't been created yet, stop and ask the user for them before proceeding with those specific pieces (email/password auth and the rest of the app can still be built and tested without Google sign-in).
+
+---
+
+## Database Schema (Replit Postgres, via Prisma)
+
+Define this as a `schema.prisma` and run `npx prisma migrate dev` against Replit's Postgres database.
+
+**User**
+- `id` (uuid, primary key)
+- `email` (unique)
+- `passwordHash` (nullable, for email/password auth; null if the user signed up via Google)
+- `name` (nullable)
+- `credits` (integer, default 20 for free tier)
+- `plan` (enum: free, creator, pro)
+- `createdAt`
+
+**Account** / **Session** (standard Auth.js/NextAuth Prisma adapter models, for Google OAuth + session handling)
+
+**Generation**
+- `id` (uuid)
+- `userId` (references User)
+- `prompt` (text)
+- `enhancedPrompt` (text, nullable)
+- `type` (enum: text_to_video, image_to_video)
+- `aspectRatio` (text, e.g. "16:9", "9:16", "1:1")
+- `durationSeconds` (integer)
+- `resolution` (text)
+- `status` (enum: queued, processing, completed, failed)
+- `seedanceJobId` (text, nullable)
+- `outputUrl` (text, nullable, points to an object in Replit Object Storage)
+- `thumbnailUrl` (text, nullable)
+- `creditsUsed` (integer)
+- `characterId` (nullable, references Character)
+- `createdAt`, `completedAt`
+
+**CreditTransaction**
+- `id`, `userId`, `amount`, `type` (purchase, deduction, refund), `stripePaymentId` (nullable), `createdAt`
+
+**Character**
+- `id` (uuid)
+- `userId` (references User)
+- `name` (text, user-given label e.g. "Max the Fox")
+- `referenceImageUrl` (text, nullable, stored in Replit Object Storage)
+- `lockedDescription` (text, a detailed, consistent visual description of the character: species/appearance, proportions, colors, outfit, distinguishing features, generated or refined with Claude so it stays consistent across prompts)
+- `style` (enum: realistic, pixar_3d, anime, claymation, etc., default pixar_3d works well for character-driven cartoon use cases)
+- `seed` (text/integer, nullable, if Seedance supports seed locking for consistency)
+- `createdAt`
+
+Since there's no database-level Row Level Security on plain Postgres the way Supabase provides it, enforce access control in code instead: every API route must scope its Prisma queries with `where: { userId: session.user.id }` (or equivalent) so a user can only ever read or write their own rows. Write this as a shared helper (e.g. `lib/auth.ts`'s `getCurrentUserId()`) used by every route handler, rather than repeating the check ad hoc.
+
+---
+
+## Folder Structure
+
+```
+/app
+  /api
+    /generate          → POST: create a generation job
+    /generate/status   → GET: poll job status
+    /enhance-prompt     → POST: send prompt to Claude for enhancement
+    /webhooks/stripe    → POST: handle Stripe events
+    /webhooks/seedance  → POST: handle Seedance completion callbacks (if supported), else polling
+  /dashboard
+    page.tsx            → generation history grid
+  /generate
+    page.tsx            → main generation UI
+  /characters
+    page.tsx            → character library (create/edit/select saved characters)
+  /pricing
+    page.tsx            → credit packs / plans
+  /login, /signup
+  /api/auth/[...nextauth]  → Auth.js route handler
+/components
+  GenerationForm.tsx
+  VideoCard.tsx
+  CreditBalance.tsx
+  PromptEnhancerToggle.tsx
+  StyleSelector.tsx      → realistic / pixar_3d / anime / claymation picker
+  CharacterCard.tsx
+  CharacterCreateForm.tsx
+/lib
+  prisma.ts              → Prisma client singleton
+  auth.ts                → Auth.js config + getCurrentUserId() helper
+  storage.ts             → Replit Object Storage upload/download wrapper
+  seedance.ts            → Seedance API client wrapper
+  anthropic.ts           → prompt enhancement + character description generation
+  stripe.ts
+  credits.ts             → credit deduction/refund logic
+  characters.ts          → save/load/apply saved character to a generation prompt
+/prisma
+  schema.prisma
+```
+
+---
+
+## Core Features to Build (MVP scope only)
+
+1. **Auth**: Email/password (hashed with bcrypt) and Google sign-in via Auth.js, sessions persisted in Replit Postgres.
+2. **Text-to-video generation**: A form with a prompt textarea, aspect ratio selector (16:9, 9:16, 1:1), duration selector, and resolution selector. On submit, deduct credits, create a `Generation` row with status `queued`, and call the Seedance API.
+3. **Image-to-video generation**: Allow an image upload (stored in Replit Object Storage) as an alternative starting point, passed to Seedance's image-to-video endpoint.
+4. **Style selector, including Pixar-style 3D animation**: A style picker on the generation form (realistic, **pixar_3d**, anime, claymation). Selecting a style injects a tuned style prefix/suffix into the prompt sent to Seedance so output matches that look. For `pixar_3d`, use a template along the lines of: "3D animated Pixar/DreamWorks-style render, rounded expressive character design, soft cinematic global illumination, vibrant saturated color palette, subsurface scattering on skin, smooth stylized textures, shallow depth of field, animated feature film quality" appended to the user's prompt (keep this as an editable constant in `lib/seedance.ts` or a `stylePresets.ts` file so it can be tuned after seeing real Seedance output).
+5. **Character consistency**: A "Characters" library where a user can create a saved character by uploading a reference image and/or describing it in text. On save, send the description (and image, if Seedance/Claude vision supports it) to Claude to produce a detailed, consistent `lockedDescription` written the way a video-generation prompt expects (physical traits, proportions, colors, outfit, distinguishing marks). When generating a video, let the user pick a saved character from a dropdown; the app then prepends the character's `lockedDescription` (and passes `referenceImageUrl` and/or `seed` to Seedance if its API supports image-conditioned or seed-based consistency) to the prompt, so the same character can recur correctly across multiple generations and multiple scenes. Store which character (if any) was used on each `Generation` row.
+6. **Prompt enhancer**: A toggle that, when on, sends the user's raw prompt (plus selected style and character, if any) to Claude with an instruction to rewrite it into a more detailed, cinematic video-generation prompt before sending it to Seedance. Show the enhanced prompt to the user before they confirm generation.
+7. **Job polling**: Since Seedance generation is async, poll for job status every few seconds from the frontend, or run a background route that polls Seedance and updates the `generations` table.
+8. **Generation history / dashboard**: A grid of the user's past generations with thumbnail, status, style used, character used (if any), and a download button for completed ones.
+9. **Credit system**: New users get free credits. Each generation deducts credits based on duration and resolution (define a simple cost table, e.g. 1 credit per second at standard resolution, 2 credits per second at high resolution). Block generation if the user has insufficient credits and prompt them to buy more.
+10. **Stripe integration**: A pricing page offering at least two credit packs and a Stripe Checkout flow. Handle the `checkout.session.completed` webhook to add credits to the user's account.
+11. **Download/share**: Let users download the finished MP4 and copy a shareable link.
+
+Do not build later-phase features (video-to-video restyle, batch generation, built-in timeline editor, team workspaces, public gallery, API access) in this pass. Leave clearly marked TODO comments or a `FUTURE_FEATURES.md` file noting where they'd hook in.
+
+---
+
+## Build Order
+
+1. Scaffold the Next.js project and folder structure above.
+2. Provision Replit Postgres and Replit Object Storage, write `schema.prisma` (including the `Character` model and `characterId` on `Generation`), run the migration.
+3. Build auth (login/signup pages, Auth.js config, `getCurrentUserId()` helper, session handling). Enforce per-user data access in every API route by scoping Prisma queries to the current user's id, since there's no database-level RLS on plain Postgres.
+4. Build the Seedance API client wrapper (`lib/seedance.ts`) with functions for `createTextToVideoJob`, `createImageToVideoJob`, and `getJobStatus`. Stub these with mock responses if the real API key isn't available yet, clearly marked with a `// TODO: replace mock with real Seedance call`. Confirm whether Seedance supports seed locking and/or reference-image conditioning, since that determines how strong character consistency can be at the API level versus relying on detailed prompt text alone.
+5. Build `stylePresets.ts` with the prompt templates for each style (realistic, pixar_3d, anime, claymation).
+6. Build the Characters feature: create/edit/list saved characters, generate `lockedDescription` via Claude, store reference image in Replit Object Storage.
+7. Build the generation form (prompt, style selector, character selector, aspect ratio, duration, resolution) and connect it to the `/api/generate` route, composing the final prompt from: user prompt + selected style template + selected character's locked description (if any).
+8. Build job polling and update generation status in the database.
+9. Build the dashboard/history view, showing style and character used per generation.
+10. Build the credit system and cost calculation logic.
+11. Integrate Stripe for credit purchases.
+12. Do a full end-to-end test: sign up, buy credits (test mode), create a character, generate a Pixar-style video using that character, generate a second video reusing the same character, confirm visual consistency and that both appear correctly in history.
+13. Write a short `README.md` covering setup, environment variables, and how to run locally and on Replit.
+
+---
+
+## Notes for Claude Code
+
+- Prioritize a working end-to-end loop (prompt in, video out, credits deducted) over polish. Get that loop functioning before styling anything.
+- If the Seedance API's actual request/response shape isn't known yet, ask the user for their API documentation link or example request before writing the integration, rather than guessing at field names. Specifically check its docs for: (1) seed/reference-image parameters for consistency, and (2) whether style/quality parameters exist separately from the prompt text, since that changes how `stylePresets.ts` and the character system should be implemented.
+- Keep all Seedance and Stripe calls server-side only (API routes), never expose secret keys to the client.
+- Use Tailwind for styling, keep the UI clean and modern (dark mode default is a good fit for a video tool), but don't over-invest in design polish in this pass.
+- Character consistency quality will depend heavily on what Seedance actually supports. Build the prompt-engineering approach (locked description + style template) as the reliable baseline that always works, and layer in seed/reference-image conditioning as an enhancement if the API supports it, rather than assuming API-level consistency is available.
+- For Pixar-style output, treat the style template in `stylePresets.ts` as a starting point to refine after seeing real generations. Note in the README that the exact wording may need tuning once actual Seedance output is compared against the desired look.
+- This build uses Replit's built-in Postgres and Object Storage to keep everything on one platform for the MVP. Structure the data layer so a later migration to Supabase (or any other managed Postgres) is low-friction if the app needs Supabase's Auth/RLS/Storage features once it's opened up for monetization: keep all database access behind Prisma (never write raw SQL tied to Replit-specific extensions), keep all file storage behind the `lib/storage.ts` wrapper (never call Replit's Object Storage SDK directly from route handlers or components), and keep auth logic behind `lib/auth.ts` rather than scattering session checks throughout the app. This way, swapping the underlying provider later means changing three files, not the whole app.

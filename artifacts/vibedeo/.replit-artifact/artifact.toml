@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Vibedeo AI Video Studio"
+description = "An AI video creation studio for turning prompts and saved characters into short cinematic clips, with style presets, prompt enhancement, credits, and generation history."
+version = "1.0.0"
+id = "artifacts/vibedeo"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25158
+
+[services.development]
+run = "pnpm --filter @workspace/vibedeo run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vibedeo", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/vibedeo/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25158"
+BASE_PATH = "/"
