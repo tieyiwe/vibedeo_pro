@@ -1,10 +1,11 @@
-# [Project name]
+# Vibedeo
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Vibedeo is an AI video creation studio for producing short cinematic clips from prompts and reusable characters.
 
 ## Run & Operate
 
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/vibedeo run dev` — run the Vibedeo web app through its managed workflow
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -22,15 +23,27 @@ _Replace the heading above with the project's name, and this line with one sente
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- API contract: `lib/api-spec/openapi.yaml`
+- Vibedeo frontend: `artifacts/vibedeo/src`
+- Vibedeo API routes: `artifacts/api-server/src/routes/vibedeo.ts`
+- Prompt and mock-provider domain logic: `artifacts/api-server/src/lib/vibedeo.ts`
+- Database schema: `lib/db/src/schema/vibedeo.ts`
+- Theme tokens: `artifacts/vibedeo/src/index.css`
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Build and validate the complete product loop against a mock video provider before implementing Seedance. **Why:** the Seedance request/response contract, seed locking, reference conditioning, and callback behavior have not been provided.
+- Keep video-provider behavior behind server-side domain logic so real Seedance calls can replace the mock without changing the frontend API.
+- The current first build runs as a persistent demo workspace user; account isolation and production authentication are a separate integration milestone.
+- Credit costs are calculated and deducted on the server inside a database transaction.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- Dashboard with credit, generation, processing, and saved-character summaries
+- Text-to-video creation flow with style, aspect ratio, duration, resolution, character casting, and prompt enhancement
+- Reusable character library with generated locked descriptions
+- Searchable generation library with mock progress, video playback/download, and share links
+- Credit pack presentation ready for payment integration
 
 ## User preferences
 
@@ -38,7 +51,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Re-run API codegen after every change to `lib/api-spec/openapi.yaml`.
+- Do not guess Seedance fields. Obtain current documentation or an example request/response before replacing the mock provider.
+- The frontend artifact is mounted at `/`; API requests use the shared `/api` route.
 
 ## Pointers
 
