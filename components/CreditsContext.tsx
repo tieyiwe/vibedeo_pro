@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { authRequired } from "@/lib/env";
 
 interface CreditsState {
   credits: number | null;
@@ -24,7 +25,9 @@ export function CreditsProvider({ children }: { children: React.ReactNode }) {
   const [plan, setPlan] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (status !== "authenticated") return;
+    // In dev-bypass mode there's no real NextAuth session, but the server
+    // still resolves a user — so fetch regardless of `status` in that case.
+    if (status !== "authenticated" && authRequired()) return;
     try {
       const response = await fetch("/api/me", { cache: "no-store" });
       if (!response.ok) return;

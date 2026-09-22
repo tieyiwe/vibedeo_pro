@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import { authRequired } from "@/lib/env";
 import { CreditBalance } from "./CreditBalance";
 import { BoltIcon, GridIcon, SparkIcon, UsersIcon } from "./Icons";
 
@@ -92,6 +93,14 @@ export function AppShell({
             {subtitle && <p className="truncate text-sm text-zinc-500">{subtitle}</p>}
           </div>
           {action}
+          {!authRequired() && (
+            <span
+              className="chip hidden border-amber-500/30 text-amber-300 sm:inline-flex"
+              title="Every visitor currently shares one dev-preview account. Set NEXT_PUBLIC_REQUIRE_AUTH=true and rebuild to require real sign-in."
+            >
+              Dev preview · no login
+            </span>
+          )}
           <CreditBalance />
         </header>
 

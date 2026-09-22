@@ -4,7 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
-import { optionalEnv } from "./env";
+import { authRequired, optionalEnv } from "./env";
 
 /**
  * All session/auth logic lives here.
@@ -85,10 +85,43 @@ export const authConfig: NextAuthConfig = {
 
 export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
 
+// --- TEMPORARY dev auth bypass ----------------------------------------------
+//
+// See authRequired() in lib/env.ts for the switch and how to turn real auth
+// back on. While it's off, every request shares one persistent "dev preview"
+// user so characters/generations/credits all behave normally without a login
+// step. Delete this block (and its call site below) once real auth returns.
+
+const DEV_BYPASS_EMAIL = "dev-preview@vibedeo.local";
+let bypassWarned = false;
+
+async function getOrCreateBypassUserId(): Promise<string> {
+  if (!bypassWarned) {
+    bypassWarned = true;
+    console.warn(
+      '[auth] NEXT_PUBLIC_REQUIRE_AUTH is not "true" — every request is being ' +
+        "treated as a single shared dev-preview user. Set " +
+        "NEXT_PUBLIC_REQUIRE_AUTH=true (and rebuild) to turn real sign-in back on.",
+    );
+  }
+  // upsert rather than find-then-create: race-safe if two requests hit this
+  // before the row exists yet.
+  const user = await prisma.user.upsert({
+    where: { email: DEV_BYPASS_EMAIL },
+    update: {},
+    create: { email: DEV_BYPASS_EMAIL, name: "Dev preview" },
+  });
+  return user.id;
+}
+
+// --- end dev auth bypass -----------------------------------------------------
+
 /** The current user's id, or null when signed out. */
 export async function getCurrentUserId(): Promise<string | null> {
   const session = await auth();
-  return session?.user?.id ?? null;
+  if (session?.user?.id) return session.user.id;
+  if (!authRequired()) return getOrCreateBypassUserId();
+  return null;
 }
 
 export class UnauthorizedError extends Error {

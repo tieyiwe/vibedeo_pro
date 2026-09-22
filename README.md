@@ -179,6 +179,22 @@ and served by `/api/files/[...key]`, which accepts either the signed-in owner or
 a URL carrying an HMAC of the key — that's what lets Seedance fetch a first
 frame and share links work without making the bucket public.
 
+### Dev auth bypass (temporary)
+
+While `NEXT_PUBLIC_REQUIRE_AUTH` is unset (the default), every request shares
+one persistent "dev preview" account (`lib/auth.ts`'s `getOrCreateBypassUserId`)
+instead of requiring sign-in — so the rest of the product can be built and
+clicked through without a login step. It's visible in the UI as a "Dev preview
+· no login" badge, and the server logs a warning once per process while it's
+active. Every route still resolves its user through `getCurrentUserId()` /
+`requireUserId()`, so nothing bypasses the per-user data scoping described
+above — there is just one shared user in this mode.
+
+To turn real sign-in back on: set `NEXT_PUBLIC_REQUIRE_AUTH="true"` and run
+`npm run build` again. This is a public (client-inlined) variable, so unlike
+most settings here a server restart alone isn't enough — Next.js bakes its
+value into the browser bundle at build time.
+
 ---
 
 ## Environment variables

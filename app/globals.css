@@ -9,12 +9,12 @@
   --color-ink-600: #282836;
   --color-ink-500: #3a3a4d;
 
-  --color-brand-300: #c4b5fd;
-  --color-brand-400: #a78bfa;
-  --color-brand-500: #8b5cf6;
-  --color-brand-600: #7c3aed;
-  --color-accent-400: #f472b6;
-  --color-accent-500: #ec4899;
+  --color-brand-300: #67e8f9;
+  --color-brand-400: #22d3ee;
+  --color-brand-500: #06b6d4;
+  --color-brand-600: #0891b2;
+  --color-accent-400: #34d399;
+  --color-accent-500: #10b981;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
@@ -43,8 +43,8 @@ body::before {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 15% -10%, rgba(124, 58, 237, 0.18), transparent 60%),
-    radial-gradient(50rem 35rem at 90% 0%, rgba(236, 72, 153, 0.12), transparent 55%);
+    radial-gradient(60rem 40rem at 15% -10%, rgba(8, 145, 178, 0.18), transparent 60%),
+    radial-gradient(50rem 35rem at 90% 0%, rgba(16, 185, 129, 0.12), transparent 55%);
   z-index: 0;
 }
 
