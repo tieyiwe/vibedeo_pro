@@ -1,25 +1,24 @@
-# Replit configuration for Vibedeo.
+# Replit configuration for Vibedeo (Next.js 15 + Prisma + Postgres).
 #
-# Provision from the Replit workspace panes before the first run:
-#   - Database pane  -> PostgreSQL   (sets DATABASE_URL in Secrets)
-#   - Storage pane   -> Object Storage bucket (sets the bucket id in Secrets)
+# Provision from the workspace panes before the first run:
+#   - Database pane -> PostgreSQL       (sets DATABASE_URL in Secrets)
+#   - Storage pane  -> Object Storage   (the SDK finds the default bucket by
+#                                        itself; no env var to copy)
 #
 # Everything else goes in the Secrets pane — see .env.example.
 
+modules = ["nodejs-24"]
 run = "npm run build && npm run start"
 entrypoint = "app/page.tsx"
-modules = ["nodejs-22", "postgresql-16"]
-
-[nix]
-channel = "stable-24_05"
 
 [deployment]
-run = ["sh", "-c", "npm run build && npm run start"]
+deploymentTarget = "autoscale"
 build = ["sh", "-c", "npm ci && npx prisma migrate deploy && npm run build"]
-deploymentTarget = "cloudrun"
+run = ["sh", "-c", "npm run start"]
 
+# The app binds $PORT when Replit injects one and 5000 otherwise.
 [[ports]]
-localPort = 3000
+localPort = 5000
 externalPort = 80
 
 [env]

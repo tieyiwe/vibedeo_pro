@@ -20,7 +20,7 @@ and hosting all live on one platform.
 
 | Piece | Choice |
 | --- | --- |
-| Framework | Next.js 15 (App Router), TypeScript, Tailwind CSS v4 |
+| Framework | Next.js 15 (App Router), TypeScript, Tailwind CSS v4, Node.js 24 |
 | Database | Replit Postgres via Prisma |
 | Auth | Auth.js (NextAuth v5) — email/password + Google, sessions as JWT, users in Postgres |
 | Storage | Replit Object Storage (local filesystem fallback for dev) |
@@ -37,8 +37,14 @@ and hosting all live on one platform.
 npm install
 cp .env.example .env          # fill in DATABASE_URL + AUTH_SECRET at minimum
 npx prisma migrate deploy     # or `npx prisma migrate dev` while iterating
-npm run dev                   # http://localhost:3000
+npm run dev                   # http://localhost:5000
 ```
+
+The app binds `$PORT` and falls back to 5000, which is what Replit's preview
+expects. Set `PORT=3000` if you'd rather have the usual Next.js port locally.
+
+This repo uses **npm**, not pnpm — if the Replit workspace was previously set up
+as a pnpm workspace, see "Switching an existing Replit workspace" below.
 
 With no `SEEDANCE_API_KEY` the app runs in **mock mode**: jobs queue, "render"
 for a few seconds and complete with a placeholder clip, so the whole loop
@@ -51,11 +57,15 @@ back to a deterministic local rewrite.
 ## Running on Replit
 
 1. **Database pane → PostgreSQL.** This sets `DATABASE_URL` in Secrets.
-2. **Storage pane → create an Object Storage bucket.** This sets the bucket id.
-3. **Secrets pane →** add everything from `.env.example` that applies.
-   `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` must be your public Replit URL
-   (`https://<repl>.<user>.repl.co`) — Seedance fetches first-frame images and
-   share links from that origin.
+2. **Storage pane → create an Object Storage bucket.** Nothing to copy: the SDK
+   resolves the workspace's default bucket at runtime. Without a bucket the app
+   still runs, but files land on local disk — which does not survive a
+   deployment restart, so create one before you care about keeping clips.
+3. **Secrets pane →** add everything from `.env.example` that applies. You do
+   *not* need to set `NEXTAUTH_URL` / `NEXT_PUBLIC_APP_URL`: the public origin
+   is derived from the `REPLIT_DOMAINS` / `REPLIT_DEV_DOMAIN` variables Replit
+   injects (Seedance fetches first-frame images from it, and share links are
+   built from it). Set them only to override, e.g. for a custom domain.
 4. **Shell →**
    ```bash
    npm install
@@ -65,8 +75,28 @@ back to a deterministic local rewrite.
 5. Enable **Always On** (or use a Reserved VM / Autoscale deployment) so
    in-flight renders keep progressing.
 
-`.replit` already sets the run command, the deploy build (`npm ci &&
-prisma migrate deploy && npm run build`) and maps port 3000 → 80.
+`.replit` already declares `nodejs-24`, the run command, the autoscale deploy
+build (`npm ci && prisma migrate deploy && npm run build`) and maps port
+5000 → 80.
+
+### Switching an existing Replit workspace to this branch
+
+If the workspace currently holds a different scaffold (e.g. a pnpm workspace
+with `artifacts/` and `lib/db`), commit or stash it on its own branch first,
+then:
+
+```bash
+git fetch origin
+git checkout claude/stoic-mccarthy-79azhz
+rm -rf node_modules            # drop any pnpm-linked modules
+npm install
+npx prisma migrate deploy
+npm run build && npm run start
+```
+
+Don't merge the two branches — they are separate implementations with unrelated
+histories. Checking out is the clean switch; git removes the other scaffold's
+tracked files for you.
 
 ### Google sign-in
 

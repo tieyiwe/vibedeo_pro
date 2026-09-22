@@ -26,8 +26,40 @@ function bucketId(): string | undefined {
   );
 }
 
+/**
+ * Replit's SDK resolves the workspace's default bucket from its own sidecar at
+ * runtime — there is no bucket id in the environment to look for. So detect the
+ * platform instead, and only fall back to local disk when we are somewhere else
+ * (or when the bucket turns out not to be provisioned).
+ */
+function onReplit(): boolean {
+  return Boolean(
+    optionalEnv("REPL_ID") ??
+      optionalEnv("REPLIT_DEV_DOMAIN") ??
+      optionalEnv("REPLIT_DOMAINS") ??
+      optionalEnv("REPLIT_DEPLOYMENT"),
+  );
+}
+
+/** Set once the Replit bucket proves unusable, so we stop retrying it. */
+let replitUnavailable = false;
+
+function noteReplitUnavailable(error: unknown): void {
+  if (!replitUnavailable) {
+    replitUnavailable = true;
+    clientPromise = null;
+    console.warn(
+      "[storage] Replit Object Storage is unavailable, falling back to local disk. " +
+        "Create a bucket from the Storage pane — local files do not survive a " +
+        "deployment restart. Cause:",
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 export function storageBackend(): "replit" | "local" {
-  return bucketId() ? "replit" : "local";
+  if (replitUnavailable) return "local";
+  return bucketId() || onReplit() ? "replit" : "local";
 }
 
 type ReplitClient = {
@@ -128,21 +160,25 @@ export async function putObject(
   contentType = "application/octet-stream",
 ): Promise<string> {
   const cleanKey = safeKey(key);
+
   if (storageBackend() === "replit") {
-    const client = await replitClient();
-    // Replit Object Storage stores no per-object metadata, so the content type
-    // is carried by the key's extension (see buildKey) and re-derived on read.
-    // `compress: false` — these are already-compressed media files.
-    const result = await client.uploadFromBytes(cleanKey, data, { compress: false });
-    if (!result.ok) {
-      throw new Error(`Object storage upload failed: ${result.error?.message}`);
+    try {
+      const client = await replitClient();
+      // Replit Object Storage keeps no per-object metadata, so the content type
+      // is carried by the key's extension (see buildKey) and re-derived on read.
+      // `compress: false` — these are already-compressed media files.
+      const result = await client.uploadFromBytes(cleanKey, data, { compress: false });
+      if (!result.ok) throw new Error(result.error?.message ?? "upload failed");
+      return cleanKey;
+    } catch (error) {
+      noteReplitUnavailable(error);
     }
-  } else {
-    const file = localPath(cleanKey);
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, data);
-    await fs.writeFile(`${file}.meta`, JSON.stringify({ contentType }));
   }
+
+  const file = localPath(cleanKey);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, data);
+  await fs.writeFile(`${file}.meta`, JSON.stringify({ contentType }));
   return cleanKey;
 }
 
@@ -150,12 +186,21 @@ export async function getObject(
   key: string,
 ): Promise<{ data: Buffer; contentType: string } | null> {
   const cleanKey = safeKey(key);
+
   if (storageBackend() === "replit") {
-    const client = await replitClient();
-    const result = await client.downloadAsBytes(cleanKey);
-    if (!result.ok || !result.value?.length) return null;
-    return { data: Buffer.from(result.value[0]), contentType: guessContentType(cleanKey) };
+    try {
+      const client = await replitClient();
+      const result = await client.downloadAsBytes(cleanKey);
+      if (!result.ok || !result.value?.length) return null;
+      return {
+        data: Buffer.from(result.value[0]),
+        contentType: guessContentType(cleanKey),
+      };
+    } catch (error) {
+      noteReplitUnavailable(error);
+    }
   }
+
   try {
     const file = localPath(cleanKey);
     const data = await fs.readFile(file);
@@ -174,11 +219,17 @@ export async function getObject(
 
 export async function deleteObject(key: string): Promise<void> {
   const cleanKey = safeKey(key);
+
   if (storageBackend() === "replit") {
-    const client = await replitClient();
-    await client.delete(cleanKey, { ignoreNotFound: true });
-    return;
+    try {
+      const client = await replitClient();
+      await client.delete(cleanKey, { ignoreNotFound: true });
+      return;
+    } catch (error) {
+      noteReplitUnavailable(error);
+    }
   }
+
   await fs.rm(localPath(cleanKey), { force: true });
   await fs.rm(`${localPath(cleanKey)}.meta`, { force: true });
 }

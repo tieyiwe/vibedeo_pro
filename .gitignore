@@ -12,6 +12,15 @@ dist/
 # local object-storage fallback (used when no Replit bucket is configured)
 .data/
 
+# Replit workspace state
+.cache/
+.local/
+.upm/
+.breakpoints
+.conversation/
+.agents/
+attached_assets/
+
 *.log
 npm-debug.log*
 .DS_Store
