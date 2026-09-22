@@ -16,10 +16,33 @@ deploymentTarget = "autoscale"
 build = ["sh", "-c", "npm ci && npx prisma migrate deploy && npm run build"]
 run = ["sh", "-c", "npm run start"]
 
-# The app binds $PORT when Replit injects one and 5000 otherwise.
 [[ports]]
 localPort = 5000
 externalPort = 80
 
 [env]
 NEXT_TELEMETRY_DISABLED = "1"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
